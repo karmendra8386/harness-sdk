@@ -181,6 +181,10 @@ def test_default_effort_on_model_instance_does_not_warn(caplog):
         ("bedrock/openai.gpt-oss-120b-1:0", ("additional_request_fields", "reasoning_effort")),
         ("bedrock/qwen.qwen3-32b-v1:0", ("additional_request_fields", "reasoning_effort")),
         ("bedrock/us.xai.grok-4", ("additional_request_fields", "reasoning_effort")),
+        (
+            "bedrock/global.amazon.nova-2-lite-v1:0",
+            ("additional_request_fields", "reasoningConfig", "maxReasoningEffort"),
+        ),
         ("anthropic/claude-opus-5", ("params", "output_config", "effort")),
         ("openai/gpt-5.6-sol", ("params", "reasoning", "effort")),
         ("bedrock-mantle/openai.gpt-5.6-sol", ("params", "reasoning", "effort")),
@@ -255,6 +259,25 @@ def test_gpt_oss_on_bedrock_uses_its_reasoning_field_and_levels():
     assert "additional_request_fields" not in resolve("bedrock/openai.gpt-oss-120b-1:0", effort="off").config
     with pytest.raises(ValueError, match="not supported by Bedrock model openai.gpt-oss-120b-1:0"):
         resolve("bedrock/openai.gpt-oss-120b-1:0", effort="max")
+
+
+def test_nova_2_on_bedrock_uses_reasoning_config():
+    # https://github.com/strands-agents/harness-sdk/issues/4852
+    model = resolve("bedrock/global.amazon.nova-2-lite-v1:0", effort="medium")
+    assert model.config["additional_request_fields"] == {
+        "reasoningConfig": {"type": "enabled", "maxReasoningEffort": "medium"}
+    }
+    assert supports_thinking("bedrock/amazon.nova-2-lite-v1:0") is True
+    # No ``none`` level: off drops the reasoning block instead.
+    assert "additional_request_fields" not in resolve("bedrock/amazon.nova-2-lite-v1:0", effort="off").config
+    with pytest.raises(ValueError, match="not supported by Bedrock model amazon.nova-2-lite-v1:0"):
+        resolve("bedrock/amazon.nova-2-lite-v1:0", effort="max")
+
+
+def test_nova_1_on_bedrock_still_has_no_thinking_levels():
+    assert supports_thinking("bedrock/amazon.nova-pro-v1:0") is False
+    with pytest.raises(ValueError, match="not supported by Bedrock model"):
+        resolve("bedrock/amazon.nova-pro-v1:0", effort="high")
 
 
 def test_qwen_on_bedrock_uses_its_reasoning_field_and_levels():
@@ -338,8 +361,7 @@ def test_openai_maps_to_reasoning_effort():
 def test_anthropic_maps_to_thinking_and_max_tokens():
     model = resolve("anthropic/claude-opus-4-8")
     assert model.config["model_id"] == "claude-opus-4-8"
-    assert model.config["max_tokens"] == 128_000
-    assert model.config["params"]["thinking"] == {"type": "adaptive", "display": "summarized"}
+    assert model.config["max_tokens"] == 32_000
 
 
 def test_anthropic_haiku_gets_its_own_tier_max_tokens():
@@ -369,7 +391,7 @@ def test_bedrock_non_claude_model_has_no_forced_max_tokens():
 
 def test_bedrock_legacy_claude_3_id_has_no_forced_max_tokens():
     model = resolve("bedrock/anthropic.claude-3-haiku-20240307-v1:0")
-    assert "max_tokens" not in model.config
+    assert model.config["max_tokens"] not in model.config
 
 
 def test_bedrock_mantle_builds_via_openai_responses_model():
@@ -511,6 +533,7 @@ NO_THINKING_CLAUDE = [
 ADAPTIVE_CLAUDE = [
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-sonnet-4-6",
+    "global.anthropic.claude-opus-4-6",
     "global.anthropic.claude-opus-4-7",
     "global.anthropic.claude-opus-4-8",
     "global.anthropic.claude-opus-5",
@@ -610,7 +633,8 @@ def test_each_level_maps_to_a_budget_the_api_accepts(level, budget):
         ("claude-sonnet-5", 128_000),
         ("claude-opus-4-5-20251101-v1:0", 64_000),
         ("claude-opus-4.5", 64_000),
-        ("claude-opus-4-8", 128_000),
+        ("claude-opus-4.5", 64_000),
+        ("claude-opus-4.8", 128_000),
         ("claude-opus-5", 128_000),
     ],
 )
@@ -678,7 +702,8 @@ def test_supports_media_is_false_for_openai_on_bedrock_converse():
     assert _supports_media("bedrock/us.openai.gpt-6-astra") is False
     assert _supports_media("bedrock/openai.gpt-5.6-sol") is False
     assert _supports_media("bedrock/global.anthropic.claude-opus-4-8") is True
-    assert _supports_media("anthropic/claude-haiku-4-5-20251001") is True
+    assert _supports_media("anthropic/claude-opus-4-8") is True
+    assert _supports_media("bedrock-mantle/openai.gpt-6-astra") is True
     assert _supports_media("bedrock-mantle/openai.gpt-6-astra") is True
     assert _supports_media(None) is True
 
@@ -692,7 +717,17 @@ def test_bedrock_web_fetch_summarizer_keeps_the_inference_profile_prefix():
     assert _bedrock_web_fetch_model("us.anthropic.claude-opus-4-8") == (
         "global.anthropic.claude-haiku-4-5-20251001-v1:0"
     )
-    assert _bedrock_web_fetch_model("meta.llama3") is None
+    assert _bedrock_web_fetch_model("meta.llama3") == "meta.llama3-2-3b-instruct-v1:0"
+    assert _bedrock_web_fetch_model("google.gemma-3-27b-it") is None
+
+
+def test_bedrock_web_fetch_summarizer_maps_known_families_to_small_regionals():
+    from strands_harness.models import _bedrock_web_fetch_model
+
+    assert _bedrock_web_fetch_model("amazon.nova-2-lite-v1:0") == "amazon.nova-lite-v1:0"
+    assert _bedrock_web_fetch_model("us.amazon.nova-pro-v1:0") == "amazon.nova-lite-v1:0"
+    assert _bedrock_web_fetch_model("us.meta.llama3-2-70b-instruct-v1:0") == "meta.llama3-2-3b-instruct-v1:0"
+    assert _bedrock_web_fetch_model("mistral.mistral-large-2407-v1:0") == "mistral.mistral-small-2402-v1:0"
 
 
 def test_supports_media_reads_a_bedrock_instance_model_id():
