@@ -92,8 +92,6 @@ _BEDROCK_GPT_LEVELS = ("none", "low", "medium", "high", "xhigh", "max")
 _BEDROCK_GPT_OSS_LEVELS = ("low", "medium", "high")
 _BEDROCK_QWEN_LEVELS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 _BEDROCK_XAI_LEVELS = ("low", "medium", "high", "xhigh")
-# Nova 2 extended thinking takes maxReasoningEffort: "low", "medium", or "high", sent as
-# reasoningConfig in additionalModelRequestFields. Verified against the Nova 2 user guide.
 _BEDROCK_NOVA_LEVELS = ("low", "medium", "high")
 _GOOGLE_LEVELS = ("minimal", "low", "medium", "high")
 

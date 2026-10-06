@@ -361,7 +361,8 @@ def test_openai_maps_to_reasoning_effort():
 def test_anthropic_maps_to_thinking_and_max_tokens():
     model = resolve("anthropic/claude-opus-4-8")
     assert model.config["model_id"] == "claude-opus-4-8"
-    assert model.config["max_tokens"] == 32_000
+    assert model.config["max_tokens"] == 128_000
+    assert model.config["params"]["thinking"] == {"type": "adaptive", "display": "summarized"}
 
 
 def test_anthropic_haiku_gets_its_own_tier_max_tokens():
@@ -391,7 +392,7 @@ def test_bedrock_non_claude_model_has_no_forced_max_tokens():
 
 def test_bedrock_legacy_claude_3_id_has_no_forced_max_tokens():
     model = resolve("bedrock/anthropic.claude-3-haiku-20240307-v1:0")
-    assert model.config["max_tokens"] not in model.config
+    assert "max_tokens" not in model.config
 
 
 def test_bedrock_mantle_builds_via_openai_responses_model():
@@ -533,7 +534,6 @@ NO_THINKING_CLAUDE = [
 ADAPTIVE_CLAUDE = [
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-sonnet-4-6",
-    "global.anthropic.claude-opus-4-6",
     "global.anthropic.claude-opus-4-7",
     "global.anthropic.claude-opus-4-8",
     "global.anthropic.claude-opus-5",
@@ -633,7 +633,6 @@ def test_each_level_maps_to_a_budget_the_api_accepts(level, budget):
         ("claude-sonnet-5", 128_000),
         ("claude-opus-4-5-20251101-v1:0", 64_000),
         ("claude-opus-4.5", 64_000),
-        ("claude-opus-4.5", 64_000),
         ("claude-opus-4.8", 128_000),
         ("claude-opus-5", 128_000),
     ],
@@ -702,8 +701,7 @@ def test_supports_media_is_false_for_openai_on_bedrock_converse():
     assert _supports_media("bedrock/us.openai.gpt-6-astra") is False
     assert _supports_media("bedrock/openai.gpt-5.6-sol") is False
     assert _supports_media("bedrock/global.anthropic.claude-opus-4-8") is True
-    assert _supports_media("anthropic/claude-opus-4-8") is True
-    assert _supports_media("bedrock-mantle/openai.gpt-6-astra") is True
+    assert _supports_media("anthropic/claude-haiku-4-5-20251001") is True
     assert _supports_media("bedrock-mantle/openai.gpt-6-astra") is True
     assert _supports_media(None) is True
 
