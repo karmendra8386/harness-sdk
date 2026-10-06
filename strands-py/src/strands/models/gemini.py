@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=pydantic.BaseModel)
 
+# Video formats use an explicit MIME map: mimetypes.types_map has no entries for
+# .flv or .three_gp, and "three_gp" is not a file extension. Matches strands-ts/src/mime.ts.
+_VIDEO_MIME_TYPES: dict[str, str] = {
+    "flv": "video/x-flv",
+    "mkv": "video/x-matroska",
+    "mov": "video/quicktime",
+    "mpeg": "video/mpeg",
+    "mpg": "video/mpeg",
+    "mp4": "video/mp4",
+    "three_gp": "video/3gpp",
+    "webm": "video/webm",
+    "wmv": "video/x-ms-wmv",
+}
+
 
 class GeminiModel(Model):
     """Google Gemini model provider implementation.
@@ -171,6 +185,14 @@ class GeminiModel(Model):
                 inline_data=genai.types.Blob(
                     data=content["image"]["source"]["bytes"],
                     mime_type=mimetypes.types_map.get(f".{content['image']['format']}", "application/octet-stream"),
+                ),
+            )
+
+        if "video" in content:
+            return genai.types.Part(
+                inline_data=genai.types.Blob(
+                    data=content["video"]["source"]["bytes"],
+                    mime_type=_VIDEO_MIME_TYPES[content["video"]["format"]],
                 ),
             )
 

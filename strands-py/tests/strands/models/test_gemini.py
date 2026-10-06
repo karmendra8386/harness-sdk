@@ -1,3 +1,4 @@
+import base64
 import logging
 import unittest.mock
 
@@ -1798,3 +1799,39 @@ async def test_stream_response_empty_usage_metadata_is_preserved(gemini_client, 
             "metrics": {"latencyMs": 0},
         }
     }
+
+
+@pytest.mark.parametrize(
+    ("video_format", "mime_type"),
+    [
+        ("flv", "video/x-flv"),
+        ("mkv", "video/x-matroska"),
+        ("mov", "video/quicktime"),
+        ("mpeg", "video/mpeg"),
+        ("mpg", "video/mpeg"),
+        ("mp4", "video/mp4"),
+        ("three_gp", "video/3gpp"),
+        ("webm", "video/webm"),
+        ("wmv", "video/x-ms-wmv"),
+    ],
+)
+def test_format_request_video_block(model, video_format, mime_type):
+    """Video blocks format as inline_data parts with the right MIME type."""
+    # https://github.com/strands-agents/harness-sdk/issues/4885
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"text": "Describe this video."},
+                {"video": {"format": video_format, "source": {"bytes": b"fake-video-bytes"}}},
+            ],
+        },
+    ]
+
+    request = model._format_request(messages, None, None, None)
+
+    parts = request["contents"][0]["parts"]
+    assert len(parts) == 2
+    video_part = parts[1]
+    assert video_part["inline_data"]["mime_type"] == mime_type
+    assert video_part["inline_data"]["data"] == base64.b64encode(b"fake-video-bytes").decode()
