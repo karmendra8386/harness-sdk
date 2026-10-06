@@ -1107,7 +1107,11 @@ class BedrockModel(Model):
                         formatted_content.append({"text": json.dumps(tool_result_content["json"])})
                     else:
                         # Handle json field since not in ContentBlock but valid in ToolResultContent
-                        formatted_content.append({"json": tool_result_content["json"]})
+                        json_value = tool_result_content["json"]
+                        # Bedrock rejects non-object json values; wrap lists like the TypeScript SDK.
+                        if isinstance(json_value, list):
+                            json_value = {"$value": json_value}
+                        formatted_content.append({"json": json_value})
                 else:
                     formatted_message_content = self._format_request_message_content(
                         cast(ContentBlock, tool_result_content)
