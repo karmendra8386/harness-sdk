@@ -633,7 +633,7 @@ def test_each_level_maps_to_a_budget_the_api_accepts(level, budget):
         ("claude-sonnet-5", 128_000),
         ("claude-opus-4-5-20251101-v1:0", 64_000),
         ("claude-opus-4.5", 64_000),
-        ("claude-opus-4.8", 128_000),
+        ("claude-opus-4-8", 128_000),
         ("claude-opus-5", 128_000),
     ],
 )
