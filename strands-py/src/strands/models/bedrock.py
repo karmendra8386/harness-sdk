@@ -1108,8 +1108,9 @@ class BedrockModel(Model):
                     else:
                         # Handle json field since not in ContentBlock but valid in ToolResultContent
                         json_value = tool_result_content["json"]
-                        # Bedrock rejects non-object json values; wrap lists like the TypeScript SDK.
-                        if isinstance(json_value, list):
+                        # Bedrock's ToolResultContentBlock.json is a botocore Document structure,
+                        # so it must be an object; wrap lists and scalars like the TypeScript SDK.
+                        if not isinstance(json_value, dict):
                             json_value = {"$value": json_value}
                         formatted_content.append({"json": json_value})
                 else:
