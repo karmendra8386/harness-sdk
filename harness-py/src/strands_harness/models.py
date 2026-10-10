@@ -14,6 +14,7 @@ instance can't be honored (its provider is unknown), so a warning is logged.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -85,6 +86,35 @@ _BEDROCK_WEB_FETCH_FAMILY_MODELS = {
     "mistral.": "mistral.mistral-small-2402-v1:0",
     "google.": "google.gemma-3-4b-it",
 }
+
+# Env var holding a JSON object merged over _BEDROCK_WEB_FETCH_FAMILY_MODELS, so a small-model
+# pick can be swapped (or a family unmapped with null) without waiting for a release.
+_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR = "STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS"
+
+
+def _bedrock_web_fetch_family_models() -> dict[str, str | None]:
+    """Family->small-model map: built-ins merged with the env-var JSON override."""
+    models: dict[str, str | None] = dict(_BEDROCK_WEB_FETCH_FAMILY_MODELS)
+    raw = os.environ.get(_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR)
+    if not raw:
+        return models
+    try:
+        override = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"{_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR} must be a JSON object mapping Bedrock "
+            f"family prefixes to model ids (or null to unmap a family), got {raw!r}"
+        ) from error
+    if not isinstance(override, dict) or any(
+        not isinstance(family, str) or not (isinstance(small, str) or small is None)
+        for family, small in override.items()
+    ):
+        raise ValueError(
+            f"{_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR} must be a JSON object mapping Bedrock "
+            f"family prefixes to model ids (or null to unmap a family), got {raw!r}"
+        )
+    models.update(override)
+    return models
 
 
 # Reasoning levels each provider's API accepts. The harness validates against the resolved
@@ -501,7 +531,9 @@ def _bedrock_web_fetch_model(name: str) -> str | None:
     model's cross-region prefix because those ids are only served through an inference profile.
     Amazon, Meta, Mistral, and Google families get their small regional models. The summarizer always shares
     the main model's credentials. A family with no mapped small model returns ``None`` so the caller
-    can reuse the main model rather than guess.
+    can reuse the main model rather than guess. The map itself can be overridden without a release
+    via the ``STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS`` env var (a JSON object of family prefix to
+    model id, or null to unmap a family).
     """
     family = _bedrock_family(name)
     if family.startswith("anthropic."):
@@ -510,7 +542,11 @@ def _bedrock_web_fetch_model(name: str) -> str | None:
         prefix = name[: len(name) - len(family)]
         return f"{prefix}openai.{_WEB_FETCH_MODELS['openai']}"
     return next(
-        (small for fam_prefix, small in _BEDROCK_WEB_FETCH_FAMILY_MODELS.items() if family.startswith(fam_prefix)),
+        (
+            small
+            for fam_prefix, small in _bedrock_web_fetch_family_models().items()
+            if small is not None and family.startswith(fam_prefix)
+        ),
         None,
     )
 
