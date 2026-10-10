@@ -1087,6 +1087,44 @@ async def test_stream_does_not_fall_back_on_other_validation_errors(bedrock_clie
     bedrock_client.converse.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_stream_remembers_streaming_tool_use_rejection_per_model(bedrock_client, alist, messages):
+    """After one fallback, later turns on the same model skip streaming.
+
+    Guards against https://github.com/strands-agents/harness-sdk/issues/4857 —
+    every turn on an affected model paid one failed streamed call before this.
+    """
+    validation_error = ClientError(
+        {
+            "Error": {
+                "Code": "ValidationException",
+                "Message": "This model doesn't support tool use in streaming mode.",
+            }
+        },
+        "ConverseStream",
+    )
+    bedrock_client.converse_stream.side_effect = validation_error
+    bedrock_client.converse.return_value = {
+        "output": {
+            "message": {
+                "role": "assistant",
+                "content": [{"text": "done"}],
+            }
+        },
+        "stopReason": "end_turn",
+    }
+
+    model = BedrockModel(model_id="us.meta.llama4-scout-17b-instruct-v1:0")
+
+    await alist(model.stream(messages))
+    assert model._streaming_tool_use_unsupported_model_id == "us.meta.llama4-scout-17b-instruct-v1:0"
+
+    await alist(model.stream(messages))
+
+    bedrock_client.converse_stream.assert_called_once()
+    assert bedrock_client.converse.call_count == 2
+
+
 def test_format_request_separates_tool_result_turns_for_remembered_model(
     bedrock_client,
     tool_result_turn_messages,

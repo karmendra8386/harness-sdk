@@ -264,6 +264,7 @@ class BedrockModel(Model):
             include_tool_result_status="auto",
         )
         self._tool_result_turn_separation_model_id: str | None = None
+        self._streaming_tool_use_unsupported_model_id: str | None = None
         self.update_config(**model_config)
 
         logger.debug("config=<%s> | initializing", self.config)
@@ -1457,6 +1458,12 @@ class BedrockModel(Model):
 
             logger.debug("invoking model")
             streaming = self.config.get("streaming", True)
+            if streaming and self._streaming_tool_use_unsupported_model_id == model_id:
+                logger.debug(
+                    "model_id=<%s> | streaming tool use previously rejected, using unary converse",
+                    model_id,
+                )
+                streaming = False
             converse_method = self.client.converse_stream if streaming else self.client.converse
 
             try:
@@ -1479,6 +1486,7 @@ class BedrockModel(Model):
                     )
                     response = self.client.converse(**request)
                     streaming = False
+                    self._streaming_tool_use_unsupported_model_id = model_id
                 elif error_code != "ValidationException" or _TOOL_RESULT_TURN_VALIDATION_MESSAGE not in error_message:
                     raise
                 else:
