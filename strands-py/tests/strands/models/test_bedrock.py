@@ -5874,36 +5874,11 @@ def test_claude_model_preserves_json_in_tool_result(bedrock_client):
     assert tool_result["content"][0]["json"] == {"key": "value"}
 
 
-def test_bedrock_wraps_list_json_in_tool_result(bedrock_client):
-    """List-shaped json blocks are wrapped so Bedrock accepts them.
-
-    Guards against https://github.com/strands-agents/harness-sdk/issues/4923.
-    """
-    model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "toolResult": {
-                        "content": [{"json": [{"id": 1}, {"id": 2}]}],
-                        "toolUseId": "tool_list",
-                    }
-                }
-            ],
-        }
-    ]
-
-    formatted_request = model.format_request(messages)
-    tool_result = formatted_request["messages"][0]["content"][0]["toolResult"]
-
-    assert len(tool_result["content"]) == 1
-    assert tool_result["content"][0]["json"] == {"$value": [{"id": 1}, {"id": 2}]}
-
-
 @pytest.mark.parametrize(
     ("json_value", "expected"),
     [
+        ([{"id": 1}, {"id": 2}], {"$value": [{"id": 1}, {"id": 2}]}),
+        ([], {"$value": []}),
         (5, {"$value": 5}),
         ("x", {"$value": "x"}),
         (None, {"$value": None}),
@@ -5936,10 +5911,9 @@ def test_bedrock_wraps_non_object_json_in_tool_result(bedrock_client, json_value
     ]
 
     formatted_request = model.format_request(messages)
-    tool_result = formatted_request["messages"][0]["content"][0]["toolResult"]
-
-    assert len(tool_result["content"]) == 1
-    assert tool_result["content"][0]["json"] == expected
+    tru_tool_result = formatted_request["messages"][0]["content"][0]["toolResult"]
+    exp_tool_result = {"toolUseId": "tool_scalar", "content": [{"json": expected}]}
+    assert tru_tool_result == exp_tool_result
 
 
 def test_nova_model_handles_nested_json_in_tool_result(bedrock_client):
