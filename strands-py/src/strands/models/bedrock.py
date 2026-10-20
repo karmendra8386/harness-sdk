@@ -1466,38 +1466,48 @@ class BedrockModel(Model):
                 streaming = False
             converse_method = self.client.converse_stream if streaming else self.client.converse
 
-            try:
-                response = converse_method(**request)
-            except ClientError as error:
-                error_details = error.response.get("Error", {})
-                error_code = error_details.get("Code")
-                error_message = error_details.get("Message", "")
-
-                if (
-                    streaming
-                    and error_code == "ValidationException"
-                    and _STREAMING_TOOL_USE_UNSUPPORTED_MESSAGE in error_message
-                ):
-                    # Some Bedrock models (e.g. Llama) reject tool use over streaming Converse
-                    # but accept it over unary Converse; retry this turn without streaming.
-                    logger.debug(
-                        "model_id=<%s> | streaming tool use unsupported, falling back to unary converse",
-                        model_id,
-                    )
-                    response = self.client.converse(**request)
-                    streaming = False
-                    self._streaming_tool_use_unsupported_model_id = model_id
-                elif error_code != "ValidationException" or _TOOL_RESULT_TURN_VALIDATION_MESSAGE not in error_message:
-                    raise
-                else:
-                    separated_messages = self._separate_tool_result_turns(request["messages"])
-                    if separated_messages == request["messages"]:
-                        raise
-
-                    logger.debug("model_id=<%s> | separating tool result and conversation turns", model_id)
-                    request = {**request, "messages": separated_messages}
+            # Both ValidationException fallbacks can apply to a single call, in either order: a
+            # model that rejects streaming tool use can also require separated tool-result turns.
+            # Each fallback is recorded before its retry and can fire only once -- streaming flips
+            # to unary and turn separation is idempotent -- so the loop retries at most twice and
+            # any further rejection propagates.
+            while True:
+                try:
                     response = converse_method(**request)
-                    self._tool_result_turn_separation_model_id = model_id
+                    break
+                except ClientError as error:
+                    error_details = error.response.get("Error", {})
+                    error_code = error_details.get("Code")
+                    error_message = error_details.get("Message", "")
+
+                    if (
+                        streaming
+                        and error_code == "ValidationException"
+                        and _STREAMING_TOOL_USE_UNSUPPORTED_MESSAGE in error_message
+                    ):
+                        # Some Bedrock models (e.g. Llama) reject tool use over streaming Converse
+                        # but accept it over unary Converse; retry this turn without streaming.
+                        logger.debug(
+                            "model_id=<%s> | streaming tool use unsupported, falling back to unary converse",
+                            model_id,
+                        )
+                        self._streaming_tool_use_unsupported_model_id = model_id
+                        streaming = False
+                        converse_method = self.client.converse
+                        continue
+
+                    if error_code == "ValidationException" and _TOOL_RESULT_TURN_VALIDATION_MESSAGE in error_message:
+                        separated_messages = self._separate_tool_result_turns(request["messages"])
+                        if separated_messages != request["messages"]:
+                            logger.debug(
+                                "model_id=<%s> | separating tool result and conversation turns",
+                                model_id,
+                            )
+                            self._tool_result_turn_separation_model_id = model_id
+                            request = {**request, "messages": separated_messages}
+                            continue
+
+                    raise
 
             logger.debug("got response from model")
             if streaming:
