@@ -92,12 +92,11 @@ _BEDROCK_WEB_FETCH_FAMILY_MODELS = {
 _BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR = "STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS"
 
 
-def _bedrock_web_fetch_family_models() -> dict[str, str | None]:
-    """Family->small-model map: built-ins merged with the env-var JSON override."""
-    models: dict[str, str | None] = dict(_BEDROCK_WEB_FETCH_FAMILY_MODELS)
+def _bedrock_web_fetch_env_overrides() -> dict[str, str | None]:
+    """Parsed env-var JSON override for the family map, or an empty dict when the var is unset."""
     raw = os.environ.get(_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR)
     if not raw:
-        return models
+        return {}
     try:
         override = json.loads(raw)
     except json.JSONDecodeError as error:
@@ -113,7 +112,13 @@ def _bedrock_web_fetch_family_models() -> dict[str, str | None]:
             f"{_BEDROCK_WEB_FETCH_FAMILY_MODELS_ENV_VAR} must be a JSON object mapping Bedrock "
             f"family prefixes to model ids (or null to unmap a family), got {raw!r}"
         )
-    models.update(override)
+    return override
+
+
+def _bedrock_web_fetch_family_models() -> dict[str, str | None]:
+    """Family->small-model map: built-ins merged with the env-var JSON override."""
+    models: dict[str, str | None] = dict(_BEDROCK_WEB_FETCH_FAMILY_MODELS)
+    models.update(_bedrock_web_fetch_env_overrides())
     return models
 
 
@@ -533,9 +538,13 @@ def _bedrock_web_fetch_model(name: str) -> str | None:
     the main model's credentials. A family with no mapped small model returns ``None`` so the caller
     can reuse the main model rather than guess. The map itself can be overridden without a release
     via the ``STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS`` env var (a JSON object of family prefix to
-    model id, or null to unmap a family).
+    model id, or null to unmap a family); an env entry for a family takes precedence over every
+    built-in default below, the Anthropic and OpenAI branches included.
     """
     family = _bedrock_family(name)
+    for fam_prefix, small in _bedrock_web_fetch_env_overrides().items():
+        if family.startswith(fam_prefix):
+            return small
     if family.startswith("anthropic."):
         return _WEB_FETCH_MODELS["bedrock"]
     if family.startswith("openai."):

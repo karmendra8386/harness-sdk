@@ -751,6 +751,29 @@ def test_bedrock_web_fetch_family_models_env_null_unmaps_a_family(monkeypatch):
     assert _bedrock_web_fetch_model("google.gemma-3-27b-it") is None
 
 
+def test_bedrock_web_fetch_env_override_beats_the_anthropic_default(monkeypatch):
+    from strands_harness.models import _bedrock_web_fetch_model
+
+    monkeypatch.setenv(
+        "STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS", '{"anthropic.": "anthropic.claude-3-haiku-20240307-v1:0"}'
+    )
+    assert _bedrock_web_fetch_model("us.anthropic.claude-opus-4-8") == "anthropic.claude-3-haiku-20240307-v1:0"
+
+
+def test_bedrock_web_fetch_env_override_beats_the_openai_default(monkeypatch):
+    from strands_harness.models import _bedrock_web_fetch_model
+
+    monkeypatch.setenv("STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS", '{"openai.": "openai.gpt-5.6-sol"}')
+    assert _bedrock_web_fetch_model("us.openai.gpt-6-astra") == "openai.gpt-5.6-sol"
+
+
+def test_bedrock_web_fetch_env_null_unmaps_the_anthropic_family(monkeypatch):
+    from strands_harness.models import _bedrock_web_fetch_model
+
+    monkeypatch.setenv("STRANDS_HARNESS_BEDROCK_WEB_FETCH_MODELS", '{"anthropic.": null}')
+    assert _bedrock_web_fetch_model("us.anthropic.claude-opus-4-8") is None
+
+
 @pytest.mark.parametrize("raw", ['{"google.": 1}', '["google."]', "not json"])
 def test_bedrock_web_fetch_family_models_env_rejects_malformed_override(monkeypatch, raw):
     from strands_harness.models import _bedrock_web_fetch_model
